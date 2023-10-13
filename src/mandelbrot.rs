@@ -50,14 +50,6 @@ impl<P: 'static + Unsigned + Bounded + UpperHex + Copy + Zero + Into<f64>> Mande
         let re_range = linspace(top_left.r, bottom_right.r, w as usize).collect();
         let im_range = linspace(top_left.i, bottom_right.i, h as usize).collect();
 
-        // let top_left = config.viewport.top_left;
-        //
-        // let x_step = bottom_right.r - top_left.r / config.viewport.width;
-        // let y_step = bottom_right.i - top_left.i / config.viewport.height;
-        //
-        // let x_step = ComplexNumber::new(x_step, 0.);
-        // let y_step = ComplexNumber::new(0., y_step);
-
         Mandelbrot {
             config,
             pixels: vec![vec![Pixel::<P>::default(); w as usize]; h as usize],
@@ -92,23 +84,10 @@ impl<P: 'static + Unsigned + Bounded + UpperHex + Copy + Zero + Into<f64>> Mande
     }
 
     pub fn run(&mut self, iters: u32) {
-        // let (w, h) = self.config.dimensions;
-        // let top_left = self.config.viewport.top_left;
-        // let bottom_right = self.config.viewport.bottom_right;
-
-        // let z = 3.;
-
-        // let (re_min, im_min) = map_coordinates(top_left.r, top_left.i, z, w as usize);
-        // let (re_max, im_max) = map_coordinates(bottom_right.r, bottom_right.i, z, h as usize);
-
-        // let re_range = linspace(top_left.r, bottom_right.r, w as usize);
-        // let im_range = linspace(top_left.i, bottom_right.i, h as usize);
 
         self.iterations += iters;
 
         let mut max_iterations = 0;
-
-        let (d_w, d_h) = self.steps;
 
         for (y, im) in self.coords.1.iter().enumerate() {
             for (x, re) in self.coords.0.iter().enumerate() {
@@ -175,7 +154,7 @@ fn iterate_coordinate<T: Float + Debug>(
         f64: From<T>,
 {
     let mut count = 0;
-    let (finished_iters, mut z) = current_coord;
+    let (finished_iters, _) = current_coord;
 
     let mut z = c;
 

@@ -27,14 +27,10 @@ fn main() {
     let z_a = ComplexNumber::new(a_x, z_y);
     let z_b = ComplexNumber::new(z_x_b, -z_y);
 
-    println!("Creating {f} frames");
-
     let a_re_range: Vec<_> = linspace(a.r, z_a.r, f).collect();
     let a_im_range: Vec<_> = linspace(a.i, z_a.i, f).collect();
     let b_re_range: Vec<_> = linspace(b.r, z_b.r, f).collect();
     let b_im_range: Vec<_> = linspace(b.i, z_b.i, f).collect();
-
-    // mandelbrot.run(iter);
 
     for i in 0..f {
         let top_left = ComplexNumber::new(a_re_range[i], a_im_range[i]);
@@ -62,10 +58,6 @@ fn main() {
         let mut frame = gif::Frame::from_rgba(w as u16, h as u16, &mut flatten_array(pixels));
         frame.delay = 50;
 
-        println!("Made a frame, {} frames left", f - i - 1);
-
         encoder.write_frame(&frame).unwrap();
-
-        println!("Finished writing the frame!");
     }
 }
