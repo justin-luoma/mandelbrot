@@ -1,5 +1,5 @@
 [workspace]
-members = ["viewer"]
+members = ["gui", "viewer", "mandelbrot-gui"]
 
 [package]
 name = "mandelbrot"
@@ -7,7 +7,15 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+mandelbrot-gui = { path = "./mandelbrot-gui", optional = true }
+
 itertools-num = "0.1.3"
 num-traits = "0.2.17"
 png = { git = "https://github.com/rrbutani/image-png" }
 gif = "0.12.0"
+rayon = "1.8.0"
+bevy_ecs = { version = "0.11.3", optional = true }
+
+[features]
+default = []
+gui = ["dep:mandelbrot-gui", "dep:bevy_ecs"]

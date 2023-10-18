@@ -1,21 +1,22 @@
-use num_traits::{Float, Num};
-use std::cmp::Ordering;
-
 use std::{
     cmp::PartialOrd,
     ops::{Add, Div, Mul, Sub},
 };
+use std::cmp::Ordering;
+use std::ops::{Deref, MulAssign};
+
+use num_traits::{Float, Num};
 
 #[derive(Debug, Clone, Copy)]
 /// Represents a Complex Number
-pub struct ComplexNumber<T: Float> {
+pub struct ComplexNumber<T: Float + Send + Sync> {
     /// The real part
     pub r: T,
     /// The imaginary part
     pub i: T,
 }
 
-impl<T: Float> ComplexNumber<T> {
+impl<T: Float + Send + Sync > ComplexNumber<T> {
     pub fn new(r: T, i: T) -> ComplexNumber<T> {
         ComplexNumber { r, i }
     }
@@ -27,9 +28,18 @@ impl<T: Float> ComplexNumber<T> {
     pub fn norm_sqr(&self) -> T {
         (self.r * self.r) + (self.i * self.i)
     }
+
+    pub fn pow(&self, e: u32) -> Self {
+        let mut r = *self;
+        for _ in 1..e {
+            r *= *self;
+        }
+
+        r
+    }
 }
 
-impl<T: Add<Output = T> + Float> Add<ComplexNumber<T>> for ComplexNumber<T> {
+impl<T: Add<Output=T> + Float + Send + Sync> Add<ComplexNumber<T>> for ComplexNumber<T> {
     type Output = ComplexNumber<T>;
 
     /// Adds our `ComplexNumber` to another `ComplexNumber`
@@ -41,7 +51,9 @@ impl<T: Add<Output = T> + Float> Add<ComplexNumber<T>> for ComplexNumber<T> {
     }
 }
 
-impl<T: Add<Output = T> + Float, R: Num + Into<T> + Copy> Add<R> for ComplexNumber<T> {
+impl<T: Add<Output=T> + Float, R: Num + Into<T> + Copy> Add<R> for ComplexNumber<T>
+    where T: Send + Sync,
+{
     type Output = ComplexNumber<T>;
 
     /// Adds our `ComplexNumber` to something that _isn't_ a `ComplexNumber`
@@ -53,7 +65,9 @@ impl<T: Add<Output = T> + Float, R: Num + Into<T> + Copy> Add<R> for ComplexNumb
     }
 }
 
-impl<T: Div<Output = T> + Float, R: Num + Into<T> + Copy> Div<R> for ComplexNumber<T> {
+impl<T: Div<Output=T> + Float, R: Num + Into<T> + Copy> Div<R> for ComplexNumber<T>
+    where T: Send + Sync,
+{
     type Output = ComplexNumber<T>;
 
     /// Divides our `ComplexNumber` by something that _isn't_ a `ComplexNumber`
@@ -65,8 +79,9 @@ impl<T: Div<Output = T> + Float, R: Num + Into<T> + Copy> Div<R> for ComplexNumb
     }
 }
 
-impl<T: Mul<Output = T> + Sub<Output = T> + Add<Output = T> + Float> Mul<ComplexNumber<T>>
-    for ComplexNumber<T>
+impl<T: Mul<Output=T> + Sub<Output=T> + Add<Output=T> + Float> Mul<ComplexNumber<T>>
+for ComplexNumber<T>
+    where T: Send + Sync,
 {
     type Output = ComplexNumber<T>;
 
@@ -78,7 +93,9 @@ impl<T: Mul<Output = T> + Sub<Output = T> + Add<Output = T> + Float> Mul<Complex
     }
 }
 
-impl<T: Mul<Output = T> + Float, R: Num + Into<T> + Copy> Mul<R> for ComplexNumber<T> {
+impl<T: Mul<Output=T> + Float, R: Num + Into<T> + Copy> Mul<R> for ComplexNumber<T>
+    where T: Send + Sync,
+{
     type Output = ComplexNumber<T>;
 
     fn mul(self, other: R) -> ComplexNumber<T> {
@@ -89,14 +106,30 @@ impl<T: Mul<Output = T> + Float, R: Num + Into<T> + Copy> Mul<R> for ComplexNumb
     }
 }
 
-impl<T: PartialEq<T> + Float, J: Into<T> + Float> PartialEq<ComplexNumber<J>> for ComplexNumber<T> {
+impl<T: Float + Send + Sync + Mul> MulAssign for ComplexNumber<T> {
+    fn mul_assign(&mut self, rhs: Self) {
+        let r = self.r;
+        let i = self.i;
+        self.r = (r * rhs.r) - (i * rhs.i);
+        self.i = (r * rhs.i) + (i * rhs.r);
+    }
+}
+
+impl<T: PartialEq<T> + Float, J: Into<T> + Float> PartialEq<ComplexNumber<J>> for ComplexNumber<T>
+    where
+        T: Send + Sync,
+        J: Send + Sync,
+{
     fn eq(&self, other: &ComplexNumber<J>) -> bool {
         (self.r == other.r.into()) && (self.i == other.i.into())
     }
 }
 
 impl<T: PartialOrd<T> + Float, J: Into<T> + Float> PartialOrd<ComplexNumber<J>>
-    for ComplexNumber<T>
+for ComplexNumber<T>
+    where
+        T: Send + Sync,
+        J: Send + Sync,
 {
     fn partial_cmp(&self, other: &ComplexNumber<J>) -> Option<Ordering> {
         self.abs().partial_cmp(&other.abs().into())
@@ -105,7 +138,6 @@ impl<T: PartialOrd<T> + Float, J: Into<T> + Float> PartialOrd<ComplexNumber<J>>
 
 #[cfg(test)]
 mod tests {
-
     use super::ComplexNumber;
 
     #[test]
@@ -152,6 +184,17 @@ mod tests {
 
         assert_eq!(c.r, 2.0);
         assert_eq!(c.i, 6.0);
+    }
+
+    #[test]
+    fn complex_multiplication_assign() {
+        let mut a = ComplexNumber::new(1.0, 1.0);
+        let b = ComplexNumber::new(5.0, 3.0);
+
+        let c = a * b;
+        a *= b;
+
+        assert_eq!(c, a);
     }
 
     #[test]

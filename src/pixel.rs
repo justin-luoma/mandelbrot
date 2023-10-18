@@ -2,20 +2,20 @@ use num_traits::{AsPrimitive, Bounded, One, Unsigned, Zero};
 use std::{fmt::UpperHex, marker::Sized};
 
 #[derive(Clone)]
-pub struct Pixel<T: Unsigned + Bounded> {
+pub struct Pixel<T: Unsigned + Bounded + Send + Sync> {
     r: T,
     g: T,
     b: T,
     a: T,
 }
 
-pub trait PixelMath<T: 'static + Unsigned + Bounded + Copy> {
+pub trait PixelMath<T: 'static + Unsigned + Bounded + Copy + Send + Sync> {
     fn default() -> Self;
     fn from_hsb(hue: f64, saturation: f64, brightness: f64) -> Result<Self, String>
     where
         Self: Sized,
         f64: From<T> + AsPrimitive<T>,
-        T: Into<f64>;
+        T: Into<f64> + Send + Sync;
 
     fn new(r: T, g: T, b: T) -> Self;
     fn new_rgba(r: T, g: T, b: T, a: T) -> Self;
@@ -36,7 +36,7 @@ pub trait PixelMath<T: 'static + Unsigned + Bounded + Copy> {
     fn to_hsv(&self) -> (T, T, T);
 }
 
-impl<T: 'static + Unsigned + Bounded + UpperHex + Zero + One + Copy + Into<f64>> PixelMath<T>
+impl<T: 'static + Unsigned + Bounded + UpperHex + Zero + One + Copy + Send + Sync + Into<f64>> PixelMath<T>
     for Pixel<T>
 {
     fn default() -> Self {
@@ -47,7 +47,7 @@ impl<T: 'static + Unsigned + Bounded + UpperHex + Zero + One + Copy + Into<f64>>
     fn from_hsb(hue: f64, saturation: f64, brightness: f64) -> Result<Self, String>
     where
         f64: From<T> + AsPrimitive<T>,
-        T: Into<f64>,
+        T: Into<f64> + Send + Sync,
     {
         if saturation > 1f64 || brightness > 1f64 {
             return Err(format!(
@@ -158,12 +158,12 @@ impl<T: 'static + Unsigned + Bounded + UpperHex + Zero + One + Copy + Into<f64>>
     }
 }
 
-pub struct IntoPixel<'a, T: 'a + Unsigned + Bounded> {
+pub struct IntoPixel<'a, T: 'a + Unsigned + Bounded + Send + Sync> {
     px: &'a Pixel<T>,
     remaining: u8,
 }
 
-impl<'a, T: Unsigned + Bounded> IntoPixel<'a, T> {
+impl<'a, T: Unsigned + Bounded + Send + Sync> IntoPixel<'a, T> {
     pub fn new(px: &'a Pixel<T>) -> Self {
         IntoPixel {
             px: &px,
@@ -172,7 +172,7 @@ impl<'a, T: Unsigned + Bounded> IntoPixel<'a, T> {
     }
 }
 
-impl<'a, T: Unsigned + Bounded + Copy> Iterator for IntoPixel<'a, T> {
+impl<'a, T: Unsigned + Bounded + Copy + Send + Sync> Iterator for IntoPixel<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {

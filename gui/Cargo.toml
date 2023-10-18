@@ -1,0 +1,18 @@
+[package]
+name = "gui"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+bevy = { version = "0.11.3", features = ["dynamic_linking"] }
+bevy_egui = "0.22.0"
+egui_extras = { version = "0.23.0", features = ["all_loaders"] }
+image = "0.24.7"
+futures-lite = "1.13.0"
+crossbeam-channel = "0.5.8"
+num-traits = "0.2.17"
+
+mandelbrot = { path = "../", features = ["gui"] }
+mandelbrot-gui = { path = "../mandelbrot-gui" }
