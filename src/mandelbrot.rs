@@ -7,7 +7,7 @@ use num_traits::{AsPrimitive, Bounded, Float, sign::Unsigned, Zero};
 use rayon::prelude::*;
 
 #[cfg(feature = "gui")]
-use {bevy_ecs::prelude::Resource, mandelbrot_gui::GeneratorSettings};
+use {bevy_ecs::prelude::Resource, fractal_generator_gui::GeneratorSettings};
 
 use crate::color_scale::ContinuousColorScale;
 use crate::complex_number::ComplexNumber;
@@ -207,111 +207,158 @@ Mandelbrot<P, F>
 
         let mut viewport = self.config.viewport;
 
-        if x1 < 0 {
-            let o1 = self.get_xy_complex(0, 0).unwrap();
-            let o2 = self.get_xy_complex(1, 1).unwrap();
-            let re_diff = Self::extend_plane(x1, o1.r, o2.r);
-            dbg!(&re_diff);
-            let re = re_diff + self.coords.0[0];
-            dbg!(&re);
-        }
+        let top_left = self.get_xy_complex(x1 as usize, y1 as usize);
+        let bottom_right = self.get_xy_complex(x2 as usize, y2 as usize);
 
-        if x1 >= 0 && y1 >= 0 {
-            let top_left = self.get_xy_complex(x1 as usize, y1 as usize);
-            let bottom_right = self.get_xy_complex(x2 as usize, y2 as usize);
-
-            if let (Some(tl), Some(br)) = (top_left, bottom_right) {
-                viewport.top_left = tl;
+        if let (Some(tl), Some(br)) = (top_left, bottom_right) {
+            viewport.top_left = tl;
+            viewport.bottom_right = br;
+            self.update(viewport);
+        } else if let Some(tl) = top_left {
+            let o1 = self.get_xy_complex(width as usize - 2, height as usize - 2).unwrap();
+            let o2 = self.get_xy_complex(width as usize - 1, height as usize - 1).unwrap();
+            let re = if x2 > width {
+                let re_diff = Self::extend_plane(x2 as i32, o1.r, o2.r);
+                dbg!(&re_diff);
+                re_diff + self.coords.0[width as usize - 1]
+            } else {
+                self.coords.0[x2 as usize]
+            };
+            let im = if y2 > height {
+                let im_diff = Self::extend_plane(y2 as i32, o1.i, o2.i);
+                dbg!(&im_diff);
+                im_diff + self.coords.1[height as usize - 1]
+            } else {
+                self.coords.1[y2 as usize]
+            };
+            viewport.top_left = tl;
+            viewport.bottom_right = ComplexNumber::new(re, im);
+            self.update(viewport);
+            return;
+        } else if let Some(br) = bottom_right {
+            if x1 < 0 || y1 < 0 {
+                let o1 = self.get_xy_complex(0, 0).unwrap();
+                let o2 = self.get_xy_complex(1, 1).unwrap();
+                let re = if x1 < 0 {
+                    let re_diff = Self::extend_plane(x1, o1.r, o2.r);
+                    dbg!(&re_diff);
+                    re_diff + self.coords.0[0]
+                } else {
+                    self.coords.0[x1 as usize]
+                };
+                let im = if y1 < 0 {
+                    let im_diff = Self::extend_plane(y1, o1.i, o2.i);
+                    dbg!(&im_diff);
+                    im_diff + self.coords.1[0]
+                } else {
+                    self.coords.1[y1 as usize]
+                };
+                viewport.top_left = ComplexNumber::new(re, im);
                 viewport.bottom_right = br;
                 self.update(viewport);
-            } else if let Some(tl) = top_left {
-                let o1 = self.get_xy_complex(width as usize - 2, height as usize - 2).unwrap();
-                let o2 = self.get_xy_complex(width as usize - 1, height as usize - 1).unwrap();
-                let re1 = o1.r;
-                let im1 = o1.i;
-                let re2 = o2.r;
-                let im2 = o2.i;
-                let re_diff = if re1 > re2 {
-                    re1 - re2
-                } else {
-                    re2 - re1
-                };
-                let im_diff = if im1 > im2 {
-                    im1 - im2
-                } else {
-                    im2 - im1
-                };
-                if x2 > width && y2 > height {
-                    let x_diff = x2 - width;
-                    let y_diff = y2 - height;
-                    let mut re = re_diff * x_diff as f64;
-                    let mut im = im_diff * y_diff as f64;
-                    if re1 < 0. || re2 < 0. {
-                        re = -re;
-                    };
-                    re += self.coords.0[width as usize - 1];
-                    if im1 < 0. || im2 < 0. {
-                        im = -im;
-                    };
-                    im += self.coords.1[height as usize - 1];
-                    viewport.top_left = tl;
-                    viewport.bottom_right = ComplexNumber::new(re, im);
-                    self.update(viewport);
-                } else if x2 > width {
-                    let x_diff = x2 - width;
-                    let mut re = re_diff * x_diff as f64;
-                    if re1 < 0. || re2 < 0. {
-                        re = -re;
-                    };
-                    re += self.coords.0[width as usize - 1];
-                    let im = self.coords.1[y2 as usize];
-                    viewport.top_left = tl;
-                    viewport.bottom_right = ComplexNumber::new(re, im);
-                    self.update(viewport);
-                } else if y2 > height {
-                    let y_diff = y2 - height;
-                    let mut im = im_diff * y_diff as f64;
-                    if im1 < 0. || im2 < 0. {
-                        im = -im;
-                    };
-                    im += self.coords.1[height as usize - 1];
-                    let re = self.coords.0[x2 as usize];
-                    viewport.top_left = tl;
-                    viewport.bottom_right = ComplexNumber::new(re, im);
-                    self.update(viewport);
-                }
+                return;
             }
-        } else {
-            let o1 = self.get_xy_complex(0, 0).unwrap();
-            let o2 = self.get_xy_complex(1, 1).unwrap();
-            if x1 < 0 && y1 >= 0 {
-                let re_diff = Self::extend_plane(x1, o1.r, o2.r);
-                dbg!((&re_diff));
-                let re = re_diff + self.coords.0[0];
-                let im = self.coords.1[y1 as usize];
-
-                viewport.top_left = ComplexNumber::new(re, im);
-            } else if y1 < 0 && x1 >= 0 {
-                let im_diff = Self::extend_plane(y1, o1.i, o2.i);
-                dbg!((&im_diff));
-                let im = im_diff + self.coords.1[0];
-                let re = self.coords.0[x1 as usize];
-
-                viewport.top_left = ComplexNumber::new(re, im);
-            } else {
-                let re_diff = Self::extend_plane(x1, o1.r, o2.r);
-                let im_diff = Self::extend_plane(y1, o1.i, o2.i);
-                dbg!((&re_diff, &im_diff));
-                let re = re_diff + self.coords.0[0];
-                let im = im_diff + self.coords.1[0];
-
-                viewport.top_left = ComplexNumber::new(re, im);
-            }
-            dbg!(&viewport.top_left);
-            let bottom_right = self.get_xy_complex(x2 as usize, y2 as usize).unwrap();
-            viewport.bottom_right = bottom_right;
-            self.update(viewport);
         }
+
+        // if x1 >= 0 && y1 >= 0 {
+        //     let top_left = self.get_xy_complex(x1 as usize, y1 as usize);
+        //     let bottom_right = self.get_xy_complex(x2 as usize, y2 as usize);
+        //
+        //     if let (Some(tl), Some(br)) = (top_left, bottom_right) {
+        //         viewport.top_left = tl;
+        //         viewport.bottom_right = br;
+        //         self.update(viewport);
+        //     } else if let Some(tl) = top_left {
+        //         let o1 = self.get_xy_complex(width as usize - 2, height as usize - 2).unwrap();
+        //         let o2 = self.get_xy_complex(width as usize - 1, height as usize - 1).unwrap();
+        //         let re1 = o1.r;
+        //         let im1 = o1.i;
+        //         let re2 = o2.r;
+        //         let im2 = o2.i;
+        //         let re_diff = if re1 > re2 {
+        //             re1 - re2
+        //         } else {
+        //             re2 - re1
+        //         };
+        //         let im_diff = if im1 > im2 {
+        //             im1 - im2
+        //         } else {
+        //             im2 - im1
+        //         };
+        //         if x2 > width && y2 > height {
+        //             let x_diff = x2 - width;
+        //             let y_diff = y2 - height;
+        //             let mut re = re_diff * x_diff as f64;
+        //             let mut im = im_diff * y_diff as f64;
+        //             if re1 < 0. || re2 < 0. {
+        //                 re = -re;
+        //             };
+        //             re += self.coords.0[width as usize - 1];
+        //             if im1 < 0. || im2 < 0. {
+        //                 im = -im;
+        //             };
+        //             im += self.coords.1[height as usize - 1];
+        //             viewport.top_left = tl;
+        //             viewport.bottom_right = ComplexNumber::new(re, im);
+        //             self.update(viewport);
+        //         } else if x2 > width {
+        //             let x_diff = x2 - width;
+        //             let mut re = re_diff * x_diff as f64;
+        //             if re1 < 0. || re2 < 0. {
+        //                 re = -re;
+        //             };
+        //             re += self.coords.0[width as usize - 1];
+        //             let im = self.coords.1[y2 as usize];
+        //             viewport.top_left = tl;
+        //             viewport.bottom_right = ComplexNumber::new(re, im);
+        //             self.update(viewport);
+        //         } else if y2 > height {
+        //             let y_diff = y2 - height;
+        //             let mut im = im_diff * y_diff as f64;
+        //             if im1 < 0. || im2 < 0. {
+        //                 im = -im;
+        //             };
+        //             im += self.coords.1[height as usize - 1];
+        //             let re = self.coords.0[x2 as usize];
+        //             viewport.top_left = tl;
+        //             viewport.bottom_right = ComplexNumber::new(re, im);
+        //             self.update(viewport);
+        //         }
+        //     }
+        // } else {
+        //     let o1 = self.get_xy_complex(0, 0).unwrap();
+        //     let o2 = self.get_xy_complex(1, 1).unwrap();
+        //     if x1 < 0 && y1 >= 0 {
+        //         let re_diff = Self::extend_plane(x1, o1.r, o2.r);
+        //         dbg!((&re_diff));
+        //         let re = re_diff + self.coords.0[0];
+        //         let im = self.coords.1[y1 as usize];
+        //
+        //         viewport.top_left = ComplexNumber::new(re, im);
+        //     } else if y1 < 0 && x1 >= 0 {
+        //         let im_diff = Self::extend_plane(y1, o1.i, o2.i);
+        //         dbg!((&im_diff));
+        //         let im = im_diff + self.coords.1[0];
+        //         let re = self.coords.0[x1 as usize];
+        //
+        //         viewport.top_left = ComplexNumber::new(re, im);
+        //     } else {
+        //         let re_diff = Self::extend_plane(x1, o1.r, o2.r);
+        //         let im_diff = Self::extend_plane(y1, o1.i, o2.i);
+        //         dbg!((&re_diff, &im_diff));
+        //         let re = re_diff + self.coords.0[0];
+        //         let im = im_diff + self.coords.1[0];
+        //
+        //         viewport.top_left = ComplexNumber::new(re, im);
+        //     }
+        //     dbg!(&viewport.top_left);
+        //     let bottom_right = self.get_xy_complex(x2 as usize, y2 as usize).unwrap();
+        //     viewport.bottom_right = bottom_right;
+        //     self.update(viewport);
+        // }
+
+
+
         // let re_range: Vec<_> = linspace(tl.r, br.r, width as usize).collect();
         // let im_range: Vec<_> = linspace(tl.i, br.i, height as usize).collect();
 

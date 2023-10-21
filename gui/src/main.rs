@@ -6,19 +6,22 @@ use bevy::input::common_conditions::input_just_pressed;
 use bevy::input::mouse::MouseButtonInput;
 use bevy::window::WindowResolution;
 use bevy_egui::{egui, EguiContexts, EguiPlugin, EguiSettings};
-use bevy_egui::egui::{PointerButton, pos2, Response, Sense, Ui};
+use bevy_egui::egui::{PointerButton, pos2, Pos2, Response, Sense, Ui};
 use bevy_egui::egui::emath::Numeric;
 use bevy_egui::egui::load::SizedTexture;
 use futures_lite::future;
 use image::RgbaImage;
 use num_traits::Num;
+use rayon::prelude::*;
 
-use gui::{ComputeTask, ImageRes, Images, LoadingEvent};
+use gui::{ComputeTask, ImageRes, Images, LoadingEvent, TriangleGenerator};
 use gui::message::{GeneratorRxSender, GeneratorUiReceiver};
 use mandelbrot::flatten_array;
 use mandelbrot::mandelbrot::{Mandelbrot, MandelbrotConfig, Viewport};
 use mandelbrot::pixel::Pixel;
-use mandelbrot_gui::{GeneratorRxMessage, GeneratorSettings, GeneratorTxMessage, RgbaData};
+use fractal_generator_gui::{GeneratorRxMessage, GeneratorSettings, GeneratorTxMessage, RgbaData};
+use sierpinski_triangle::SierpinskiTriangle;
+
 
 const WIDTH: f32 = 1000.;
 
@@ -66,6 +69,11 @@ fn main() {
                 setup_camera_system,
             ),
         )
+        .insert_resource(TriangleGenerator(SierpinskiTriangle::new(
+            400.,
+            100,
+            ([255, 255, 255, 255], [0, 0, 0, 255]),
+        )))
         .add_systems(
             PostStartup,
             (generator_run_system),
@@ -77,6 +85,7 @@ fn main() {
                 update_ui_scale_factor_system,
                 ui_example_system,
                 generator_image_system,
+                draw,
             ),
         )
         .add_systems(
@@ -85,6 +94,70 @@ fn main() {
                 .run_if(input_just_pressed(MouseButton::Left)),
         )
         .run();
+}
+
+fn draw(
+    mut commands: Commands,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<ColorMaterial>>,
+    mut gizmos: Gizmos,
+) {
+    // let iterations = 3;
+    // let vertices = koch_snowflake(iterations);
+    // for v in vertices.windows(2) {
+    //     let v1 = v[0];
+    //     let v2 = v[1];
+    //     // gizmos.line_2d(
+    //     //     Vec2::new(
+    //     //         v1.0 as f32 * 500.,
+    //     //         v1.1 as f32 * 500.,
+    //     //     ), Vec2::new(
+    //     //         v2.0 as f32 * 500.,
+    //     //         v2.1 as f32 * 500.,
+    //     //     ),
+    //     //     Color::WHITE);
+    // }
+    // let mut mesh = Mesh::new(PrimitiveTopology::LineList);
+    // let points = vec![[0., 0., 1., 1.]];
+    // mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, points);
+    // gizmos.line_2d(Vec2::new(0., 0.), Vec2::new(10., 10.), Color::WHITE);
+    // commands.spawn(MaterialMesh2dBundle {
+    //     mesh: meshes.add(Mesh::from()).into(),
+    //     ..default()
+    // });
+}
+
+fn koch_snowflake(iterations: u32) -> Vec<(f64, f64)> {
+    {
+        let mut current = vec![
+            (0., 1.),
+            (3f64.sqrt() / 2., -0.5),
+            (-(3f64).sqrt() / 2., -0.5),
+        ];
+        for _ in 0..iterations {
+            current = snowflake_iter(&current[..]);
+        }
+        let first = current[0];
+        current.push(first);
+        current
+    }
+}
+
+fn snowflake_iter(points: &[(f64, f64)]) -> Vec<(f64, f64)> {
+    let mut r = vec![];
+    for i in 0..points.len() {
+        let (start, end) = (points[i], points[(i + 1) % points.len()]);
+        let t = ((end.0 - start.0) / 3.0, (end.1 - start.1) / 3.0);
+        let s = (
+            t.0 * 0.5 - t.1 * (0.75f64).sqrt(),
+            t.1 * 0.5 + (0.75f64).sqrt() * t.0,
+        );
+        r.push(start);
+        r.push((start.0 + t.0, start.1 + t.1));
+        r.push((start.0 + t.0 + s.0, start.1 + t.1 + s.1));
+        r.push((start.0 + t.0 * 2., start.1 + t.1 * 2.));
+    }
+    r
 }
 
 fn cursor_events(
@@ -172,7 +245,6 @@ fn setup_mandelbrot(
         let pixels = mandelbrot.get_pixels();
 
         generator_tx.send(GeneratorTxMessage::Image(pixels)).unwrap();
-
         for msg in generator_rx {
             match msg {
                 GeneratorRxMessage::Zoom((x, y)) => {
@@ -344,8 +416,10 @@ fn update_ui_scale_factor_system(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn ui_example_system(
     mut ui_state: ResMut<UiState>,
+    mut triangle: ResMut<TriangleGenerator>,
     // You are not required to store Egui texture ids in systems. We store this one here just to
     // demonstrate that rendering by using a texture id of a removed image is handled without
     // making bevy_egui panic.
@@ -353,6 +427,7 @@ fn ui_example_system(
     generator_sender: Res<GeneratorRxSender>,
     mut is_initialized: Local<bool>,
     mut updated: Local<bool>,
+    mut iterations: Local<u32>,
     // If you need to access the ids from multiple systems, you can also initialize the `Images`
     // resource while building the app and use `Res<Images>` instead.
     // images: Res<Images>,
@@ -360,6 +435,10 @@ fn ui_example_system(
     mut contexts: EguiContexts,
 ) {
     // run_example(&mut ui_state, &mut rendered_texture_id, &mut is_initialized, &images, contexts);
+
+    if *iterations == 0 {
+        *iterations = 1;
+    }
 
     if let Some(image) = image {
         if !*is_initialized {
@@ -382,6 +461,8 @@ fn ui_example_system(
     let mut y2 = ui_state.settings.y2.clone().unwrap_or(y2.to_string());
     let mut hue = ui_state.settings.hue.unwrap_or(200.);
     let mut exponent = ui_state.settings.exponent.unwrap_or(2);
+
+    let vertices = koch_snowflake(*iterations);
 
     egui::SidePanel::right("right-panel")
         .exact_width(SIDEBAR_WIDTH)
@@ -461,6 +542,7 @@ fn ui_example_system(
                         *is_initialized && !is_loading && *updated,
                         egui::Button::new("Update"),
                     ).clicked() {
+                        *updated = false;
                         generator_sender
                             .send(GeneratorRxMessage::Settings(ui_state.settings.clone()))
                             .unwrap();
@@ -477,6 +559,13 @@ fn ui_example_system(
                     }
 
                     ui.end_row();
+
+                    if ui
+                        .add(egui::Button::new("Iterate"))
+                        .clicked() {
+                        // triangle.0.iterate();
+                        *iterations += 1;
+                    }
                 });
         });
 
@@ -484,14 +573,6 @@ fn ui_example_system(
         .fixed_pos(pos2(0., 0.))
         .enabled(*is_initialized && !is_loading)
         .show(ctx, |ui| {
-            // let spacing = ui.spacing_mut();
-            // spacing.window_margin = Margin::ZERO;
-            // let image = Image::new(
-            //     egui::include_image!("/mnt/nvme0n1/code/rust/gui/mandelbrot/mandelbrot.png")
-            // )
-            //     // .fit_to_exact_size(vec2(1000., 1000.))
-            //     .maintain_aspect_ratio(true);
-            // ui.add(image);
             if *is_initialized {
                 ui.add(egui::widgets::Image::from_texture(SizedTexture::new(
                     *rendered_texture_id,
@@ -505,6 +586,52 @@ fn ui_example_system(
                     });
                 });
             }
+
+            let lines: Vec<_> = vertices
+                .par_windows(2)
+                .map(|v| (v[0], v[1]))
+                .map(|(p1, p2)| {
+                    egui::Shape::line_segment(
+                        [
+                            Pos2::new(p1.0 as f32 * 500. + WIDTH / 2., p1.1 as f32 * 500. +
+                                HEIGHT /
+                                2.),
+                            Pos2::new(p2.0 as f32 * 500. + WIDTH / 2., p2.1 as f32 * 500. + HEIGHT /
+                                2.)
+                        ],
+                        egui::Stroke::new(
+                            1.,
+                            egui::Color32::WHITE,
+                        ),
+                    )
+                }).collect();
+            // ui.painter().extend(lines);
+
+
+            // let mut triangle = SierpinskiTriangle::new(
+            //     400.,
+            //     100,
+            //     ([255, 255, 255, 255], [0, 0, 0, 255]),
+            // );
+            // for _ in 0..10 {
+            //     triangle.iterate();
+            // }
+            let pixels = triangle.0.pixels();
+            let triangles = pixels.iter()
+                .map(|(color, (a, b, c))| (
+                    color,
+                    vec![
+                        Pos2::new(a.0 as f32 + WIDTH / 2., a.1 as f32 * -1. + HEIGHT / 2.),
+                        Pos2::new(b.0 as f32 + WIDTH / 2., b.1 as f32 * -1. + HEIGHT / 2.),
+                        Pos2::new(c.0 as f32 + WIDTH / 2., c.1 as f32 * -1. + HEIGHT / 2.),
+                    ])
+                )
+                .map(|(color, points)| {
+                    egui::Shape::convex_polygon(points, egui::Color32::from_rgba_unmultiplied
+                        (color[0], color[1], color[2], color[3]),
+                                                egui::Stroke::new(1., egui::Color32::WHITE))
+                });
+            // ui.painter().extend(triangles);
         })
         .response
         .interact(Sense::click());
@@ -527,6 +654,8 @@ fn ui_example_system(
                 ui.add(egui::Spinner::new());
             }
         });
+
+    *updated = false;
 }
 
 fn create_viewport_ui(

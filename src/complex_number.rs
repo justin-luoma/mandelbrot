@@ -3,7 +3,7 @@ use std::{
     ops::{Add, Div, Mul, Sub},
 };
 use std::cmp::Ordering;
-use std::ops::{Deref, MulAssign};
+use std::ops::MulAssign;
 
 use num_traits::{Float, Num};
 
@@ -16,7 +16,7 @@ pub struct ComplexNumber<T: Float + Send + Sync> {
     pub i: T,
 }
 
-impl<T: Float + Send + Sync > ComplexNumber<T> {
+impl<T: Float + Send + Sync> ComplexNumber<T> {
     pub fn new(r: T, i: T) -> ComplexNumber<T> {
         ComplexNumber { r, i }
     }

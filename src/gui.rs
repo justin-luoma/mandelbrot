@@ -3,7 +3,7 @@ use std::ops::Deref;
 
 use num_traits::{AsPrimitive, Bounded, Float, ToPrimitive, Unsigned, Zero};
 
-use mandelbrot_gui::{Generator, RgbaData};
+use fractal_generator_gui::{Generator, RgbaData};
 
 use crate::flatten_array;
 use crate::mandelbrot::Mandelbrot;

@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use bevy::prelude::*;
 use bevy::tasks::Task;
+use sierpinski_triangle::SierpinskiTriangle;
 
 mod app;
 pub mod message;
@@ -35,6 +36,9 @@ pub struct LoadingEvent(bool);
 
 #[derive(Debug, Resource, Default)]
 pub struct EntityGrid(pub HashMap<(i32, i32), Entity>);
+
+#[derive(Resource)]
+pub struct TriangleGenerator(pub SierpinskiTriangle);
 
 // #[derive(Debug, Resource)]
 // pub struct Generator<T>(pub Handle<mandelbrot_gui::Generator<T>>);

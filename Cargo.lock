@@ -1852,6 +1852,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "fractal-generator-gui"
+version = "0.1.0"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "fsevent-sys"
 version = "4.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2099,11 +2106,13 @@ dependencies = [
  "bevy_egui",
  "crossbeam-channel",
  "egui_extras",
+ "fractal-generator-gui",
  "futures-lite",
  "image",
  "mandelbrot",
- "mandelbrot-gui",
  "num-traits",
+ "rayon",
+ "sierpinski-triangle",
 ]
 
 [[package]]
@@ -2545,19 +2554,12 @@ name = "mandelbrot"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
+ "fractal-generator-gui",
  "gif",
  "itertools-num",
- "mandelbrot-gui",
  "num-traits",
  "png 0.12.0",
  "rayon",
-]
-
-[[package]]
-name = "mandelbrot-gui"
-version = "0.1.0"
-dependencies = [
- "num-traits",
 ]
 
 [[package]]
@@ -2808,6 +2810,40 @@ dependencies = [
 ]
 
 [[package]]
+name = "num"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b05180d69e3da0e530ba2a1dae5110317e49e3b7f3d41be227dc5f92e49ee7af"
+dependencies = [
+ "num-bigint",
+ "num-complex",
+ "num-integer",
+ "num-iter",
+ "num-rational",
+ "num-traits",
+]
+
+[[package]]
+name = "num-bigint"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "608e7659b5c3d7cba262d894801b9ec9d00de989e8a82bd4bef91d08da45cdc0"
+dependencies = [
+ "autocfg",
+ "num-integer",
+ "num-traits",
+]
+
+[[package]]
+name = "num-complex"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1ba157ca0885411de85d6ca030ba7e2a83a28636056c7c699b07c8b6f7383214"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
 name = "num-derive"
 version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2846,6 +2882,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0638a1c9d0a3c0914158145bc76cff373a75a627e6ecbfb71cbe6f453a5a19b0"
 dependencies = [
  "autocfg",
+ "num-bigint",
  "num-integer",
  "num-traits",
 ]
@@ -3497,6 +3534,15 @@ name = "shlex"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a7cee0529a6d40f580e7a5e6c495c8fbfe21b7b52795ed4bb5e62cdf92bc6380"
+
+[[package]]
+name = "sierpinski-triangle"
+version = "0.1.0"
+dependencies = [
+ "image",
+ "num",
+ "num-traits",
+]
 
 [[package]]
 name = "simd-adler32"

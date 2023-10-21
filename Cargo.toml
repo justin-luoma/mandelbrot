@@ -1,5 +1,6 @@
 [workspace]
-members = ["gui", "viewer", "mandelbrot-gui"]
+members = ["gui", "viewer", "fractal-generator-gui", "sierpinski-triangle"]
+resolver = "2"
 
 [package]
 name = "mandelbrot"
@@ -7,7 +8,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-mandelbrot-gui = { path = "./mandelbrot-gui", optional = true }
+fractal-generator-gui = { path = "fractal-generator-gui", optional = true }
 
 itertools-num = "0.1.3"
 num-traits = "0.2.17"
@@ -18,4 +19,4 @@ bevy_ecs = { version = "0.11.3", optional = true }
 
 [features]
 default = []
-gui = ["dep:mandelbrot-gui", "dep:bevy_ecs"]
+gui = ["dep:fractal-generator-gui", "dep:bevy_ecs"]
