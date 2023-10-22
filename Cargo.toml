@@ -2,6 +2,12 @@
 members = ["gui", "viewer", "fractal-generator-gui", "sierpinski-triangle"]
 resolver = "2"
 
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3
+
 [package]
 name = "mandelbrot"
 version = "0.1.0"

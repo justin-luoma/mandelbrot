@@ -1,6 +1,7 @@
 use std::cmp;
 use std::convert::From;
 use std::fmt::{Debug, UpperHex};
+use bevy_ecs::prelude::dbg;
 
 use itertools_num::linspace;
 use num_traits::{AsPrimitive, Bounded, Float, sign::Unsigned, Zero};
@@ -218,16 +219,17 @@ Mandelbrot<P, F>
             let o1 = self.get_xy_complex(width as usize - 2, height as usize - 2).unwrap();
             let o2 = self.get_xy_complex(width as usize - 1, height as usize - 1).unwrap();
             let re = if x2 > width {
-                let re_diff = Self::extend_plane(x2 as i32, o1.r, o2.r);
+                let re_diff = Self::xy_diff(o1.r, o2.r);
+                // let re_diff = Self::extend_plane(x2 as i32, o1.r, o2.r);
                 dbg!(&re_diff);
-                re_diff + self.coords.0[width as usize - 1]
+                re_diff * (width as f64 - x2 as f64) + self.coords.0[width as usize - 1]
             } else {
                 self.coords.0[x2 as usize]
             };
             let im = if y2 > height {
-                let im_diff = Self::extend_plane(y2 as i32, o1.i, o2.i);
+                let im_diff = Self::xy_diff( o1.i, o2.i);
                 dbg!(&im_diff);
-                im_diff + self.coords.1[height as usize - 1]
+                im_diff * (height as f64 - y2 as f64) + self.coords.1[height as usize - 1]
             } else {
                 self.coords.1[y2 as usize]
             };
@@ -240,16 +242,16 @@ Mandelbrot<P, F>
                 let o1 = self.get_xy_complex(0, 0).unwrap();
                 let o2 = self.get_xy_complex(1, 1).unwrap();
                 let re = if x1 < 0 {
-                    let re_diff = Self::extend_plane(x1, o1.r, o2.r);
+                    let re_diff = Self::xy_diff( o1.r, o2.r);
                     dbg!(&re_diff);
-                    re_diff + self.coords.0[0]
+                    re_diff * (x1.abs()) as f64 + self.coords.0[0]
                 } else {
                     self.coords.0[x1 as usize]
                 };
                 let im = if y1 < 0 {
-                    let im_diff = Self::extend_plane(y1, o1.i, o2.i);
+                    let im_diff = Self::xy_diff( o1.i, o2.i);
                     dbg!(&im_diff);
-                    im_diff + self.coords.1[0]
+                    im_diff * (y1.abs()) as f64 + self.coords.1[0]
                 } else {
                     self.coords.1[y1 as usize]
                 };
@@ -406,6 +408,18 @@ Mandelbrot<P, F>
         //     .collect();
     }
 
+    fn xy_diff(neighbor1: f64, neighbor2: f64) -> f64 {
+        let mut re_diff = if neighbor1 > neighbor2 {
+            neighbor1 - neighbor2
+        } else {
+            neighbor2 - neighbor1
+        };
+        if neighbor1 < 0. || neighbor2 < 0. {
+            re_diff *= -1.;
+        }
+        re_diff
+    }
+
     fn extend_plane(extended: i32, neighbor1: f64, neighbor2: f64) -> f64 {
         let xy_diff = extended.abs();
         let step = if neighbor1 > neighbor2 {
@@ -421,6 +435,7 @@ Mandelbrot<P, F>
     }
 
     pub fn update(&mut self, viewport: Viewport<f64>) {
+        dbg!(&viewport);
         let (w, h) = self.config.dimensions;
 
         let top_left = viewport.top_left;

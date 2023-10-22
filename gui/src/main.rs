@@ -23,12 +23,12 @@ use fractal_generator_gui::{GeneratorRxMessage, GeneratorSettings, GeneratorTxMe
 use sierpinski_triangle::SierpinskiTriangle;
 
 
-const WIDTH: f32 = 1000.;
+const WIDTH: f32 = 2000.;
 
 const SIDEBAR_WIDTH: f32 = 200.;
 const BOTTOM_PANEL_HEIGHT: f32 = 25.;
 
-const HEIGHT: f32 = 1000.;
+const HEIGHT: f32 = 2000.;
 
 const ITERATIONS: u32 = 1000;
 
@@ -576,7 +576,7 @@ fn ui_example_system(
             if *is_initialized {
                 ui.add(egui::widgets::Image::from_texture(SizedTexture::new(
                     *rendered_texture_id,
-                    [1000., 1000.],
+                    [WIDTH, HEIGHT],
                 )));
             } else {
                 ui.horizontal_centered(|ui| {
@@ -600,7 +600,7 @@ fn ui_example_system(
                                 2.)
                         ],
                         egui::Stroke::new(
-                            1.,
+                            5.,
                             egui::Color32::WHITE,
                         ),
                     )
@@ -614,7 +614,7 @@ fn ui_example_system(
             //     ([255, 255, 255, 255], [0, 0, 0, 255]),
             // );
             // for _ in 0..10 {
-            //     triangle.iterate();
+            //     triangle.0.iterate();
             // }
             let pixels = triangle.0.pixels();
             let triangles = pixels.iter()
