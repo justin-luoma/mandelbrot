@@ -1,8 +1,10 @@
 use std::fs::File;
 use gif::Repeat::Infinite;
 use itertools_num::linspace;
-use mandelbrot::{color_scale::ContinuousColorScale, flatten_array, mandelbrot::{Mandelbrot, MandelbrotConfig, Viewport}};
+use mandelbrot::{color_scale::ContinuousColorScale, flatten_array, mandelbrot::Mandelbrot};
 use mandelbrot::complex_number::ComplexNumber;
+use mandelbrot::config::MandelbrotConfig;
+use mandelbrot::config::viewport::Viewport;
 
 
 fn main() {

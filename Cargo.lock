@@ -1855,6 +1855,7 @@ dependencies = [
 name = "fractal-generator-gui"
 version = "0.1.0"
 dependencies = [
+ "image",
  "num-traits",
 ]
 
@@ -2105,6 +2106,7 @@ dependencies = [
  "bevy",
  "bevy_egui",
  "crossbeam-channel",
+ "downcast-rs",
  "egui_extras",
  "fractal-generator-gui",
  "futures-lite",
@@ -2556,6 +2558,7 @@ dependencies = [
  "bevy_ecs",
  "fractal-generator-gui",
  "gif",
+ "image",
  "itertools-num",
  "num-traits",
  "png 0.12.0",

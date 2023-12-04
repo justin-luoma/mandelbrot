@@ -1,152 +1,47 @@
 use std::cmp;
 use std::convert::From;
 use std::fmt::{Debug, UpperHex};
-use bevy_ecs::prelude::dbg;
+use std::ops::MulAssign;
+use std::str::FromStr;
 
 use itertools_num::linspace;
-use num_traits::{AsPrimitive, Bounded, Float, sign::Unsigned, Zero};
+use num_traits::{AsPrimitive, Bounded, Float, Num, sign::Unsigned, Zero};
 use rayon::prelude::*;
 
 #[cfg(feature = "gui")]
-use {bevy_ecs::prelude::Resource, fractal_generator_gui::GeneratorSettings};
+use {bevy_ecs::prelude::Resource, fractal_generator_gui::GeneratorSettingsOld};
 
 use crate::color_scale::ContinuousColorScale;
 use crate::complex_number::ComplexNumber;
-use crate::julia;
+use crate::config::MandelbrotConfig;
+use crate::config::viewport::Viewport;
 use crate::pixel::{Pixel, PixelMath};
-
-#[derive(Debug, Clone, Copy)]
-pub struct Viewport<T: Float + Send + Sync> {
-    /// The top left coordinate for the grid that is to be plotted
-    pub top_left: ComplexNumber<T>,
-    pub bottom_right: ComplexNumber<T>,
-    /// Width of the grid
-    pub width: T,
-    /// Height of the grid
-    pub height: T,
-}
-
-impl<T: Float + Send + Sync> Default for Viewport<T> {
-    fn default() -> Self {
-        let a = ComplexNumber::new(T::from(-2.).unwrap(), T::from(1.15).unwrap());
-        let b = ComplexNumber::new(T::from(0.5).unwrap(), T::from(-1.15).unwrap());
-
-        Self {
-            top_left: a,
-            bottom_right: b,
-            width: T::from(500.).unwrap(),
-            height: T::from(500.).unwrap(),
-        }
-    }
-}
-
-impl<T: Float + Send + Sync> Viewport<T> {
-    pub fn with_size(mut self, width: T, height: T) -> Self {
-        self.width = width;
-        self.height = height;
-        self
-    }
-
-    pub fn with_top_left(mut self, top_left: ComplexNumber<T>) -> Self {
-        self.top_left = top_left;
-        self
-    }
-
-    pub fn with_bottom_right(mut self, bottom_right: ComplexNumber<T>) -> Self {
-        self.bottom_right = bottom_right;
-        self
-    }
-}
-
-pub type ColorFn<P, T> = Box<dyn Fn(u32, ComplexNumber<T>, u32) -> Pixel<P> + Send + Sync>;
-
-pub struct MandelbrotConfig<P: Unsigned + Bounded + UpperHex + Copy + Zero + Send + Sync, T:
-Float + Send + Sync> {
-    /// The pixel dimensions of the area to generate values/pixels for
-    pub dimensions: (u32, u32),
-    /// The `Viewport` to cover
-    pub viewport: Viewport<f64>,
-    /// The (Boxed) coloring function to be used
-    pub color_fn: ColorFn<P, T>,
-    pub exponent: u32,
-}
-
-impl<P: Unsigned + Bounded + UpperHex + Copy + Zero + Send + Sync, T:
-Float + Send + Sync> MandelbrotConfig<P, T> {
-    pub fn new(dimensions: (u32, u32), viewport: Viewport<f64>, exponent: u32, color_fn: ColorFn<P,
-        T>) -> Self {
-        Self {
-            dimensions,
-            viewport,
-            color_fn,
-            exponent,
-        }
-    }
-
-    pub fn with_dimensions(mut self, dimensions: (u32, u32)) -> Self {
-        self.dimensions = dimensions;
-        self
-    }
-
-    pub fn with_viewport(mut self, viewport: Viewport<f64>) -> Self {
-        self.viewport = viewport;
-        self
-    }
-
-    pub fn with_color_fn(mut self, color_fn: ColorFn<P, T>) -> Self {
-        self.color_fn = color_fn;
-        self
-    }
-
-    pub fn with_exponent(mut self, exponent: u32) -> Self {
-        self.exponent = exponent;
-        self
-    }
-}
-
-impl<P: 'static + Unsigned + Bounded + UpperHex + Copy + Zero + Send + Sync + Into<f64>, T:
-Float + Send + Sync> Default
-for
-MandelbrotConfig<P, T>
-    where
-        f64: From<P> + AsPrimitive<P> + From<T>,
-        T: Send + Sync + From<f64>,
-{
-    fn default() -> Self {
-        Self::new(
-            (500, 500),
-            Viewport::default(),
-            2,
-            ContinuousColorScale::get_color_fn_boxed(200.0, 1.0, 1.0),
-        )
-    }
-}
 
 #[cfg_attr(feature = "gui", derive(Resource))]
 pub struct Mandelbrot<P: Unsigned + Bounded + UpperHex + Copy + Zero + Send + Sync + Sync, F:
-Float + Send + Sync> {
-    config: MandelbrotConfig<P, F>,
+Float + Send + Sync + 'static> {
+    pub(crate) config: MandelbrotConfig<P, F>,
     pixels: Vec<Vec<Pixel<P>>>,
-    coords: (Vec<f64>, Vec<f64>),
+    coords: (Vec<F>, Vec<F>),
     values: Vec<Vec<(u32, ComplexNumber<F>)>>,
-    steps: (ComplexNumber<f64>, ComplexNumber<f64>),
+    steps: (ComplexNumber<F>, ComplexNumber<F>),
     iterations: u32,
-    max_iterations: u32,
+    pub(crate) max_iterations: u32,
 }
 
 impl<P: 'static + Unsigned + Bounded + Debug + UpperHex + Copy + Zero + Send + Sync +
-Into<f64>, F: Float + Debug + Send + Sync>
+Into<f64>, F: Num + Float + Debug + Send + Sync>
 Mandelbrot<P, F>
     where f64: From<P> + AsPrimitive<P> + Into<F> + From<F>,
-          F: From<f64> + Into<f64>
+          F: From<f64> + Into<f64> + MulAssign + FromStr + From<u32> + From<i32>
 {
-    pub fn new(config: MandelbrotConfig<P, F>) -> Mandelbrot<P, F> {
+    pub fn new(config: MandelbrotConfig<P, F>, max_iterations: u32) -> Mandelbrot<P, F> {
         let (w, h) = config.dimensions;
 
         let top_left = config.viewport.top_left;
         let bottom_right = config.viewport.bottom_right;
-        let w_c = ComplexNumber::new(bottom_right.r, 0.0);
-        let h_c = ComplexNumber::new(0.0, bottom_right.i);
+        let w_c = ComplexNumber::new(bottom_right.r, 0.0.into());
+        let h_c = ComplexNumber::new(0.0.into(), bottom_right.i);
 
         let re_range = linspace(top_left.r, bottom_right.r, w as usize).collect();
         let im_range = linspace(top_left.i, bottom_right.i, h as usize).collect();
@@ -157,7 +52,7 @@ Mandelbrot<P, F>
             values: vec![vec![(0, ComplexNumber::new(0.0.into(), 0.0.into())); w as usize]; h as
                 usize],
             steps: (w_c / w, h_c / h),
-            iterations: 0,
+            iterations: max_iterations,
             max_iterations: 0,
             coords: (re_range, im_range),
         }
@@ -172,16 +67,29 @@ Mandelbrot<P, F>
     pub fn julia_set(&mut self, iterations: u32) {
         for (y, im) in self.coords.1.iter().enumerate() {
             for (x, re) in self.coords.0.iter().enumerate() {
-                let (iters, z) = julia(*re, *im, iterations);
+                let (iters, z) = Self::julia(*re, *im, iterations);
                 self.pixels[y][x] = (self.config.color_fn)(iters, z, iterations);
             }
         }
     }
 
+    fn julia(x: F, y: F, iterations: u32) -> (u32, ComplexNumber<F>)
+        where f64: Into<F> {
+        let mut z = ComplexNumber::new(x, y);
+        let c = ComplexNumber::new((0.38).into(), (0.28).into());
+        let mut i = 0;
+        while i < iterations && z.norm_sqr() < (32.).into() {
+            z = z * z + c;
+            i += 1;
+        }
+
+        (i, z)
+    }
+
     pub fn get_xy_complex(&self, x: usize, y: usize) -> Option<ComplexNumber<f64>> {
         // self.values.get(y).and_then(|row| row.get(x).map(|v| v.1))
         match (self.coords.0.get(x), self.coords.1.get(y)) {
-            (Some(x), Some(y)) => Some(ComplexNumber::new(*x, *y)),
+            (Some(x), Some(y)) => Some(ComplexNumber::new((*x).into(), (*y).into())),
             _ => None
         }
     }
@@ -191,11 +99,15 @@ Mandelbrot<P, F>
 
         self.recalculate(true);
 
-
         self.redraw();
     }
 
-    pub fn zoom(&mut self, center: (u32, u32), radius: u32) {
+    pub fn config(&self) -> &MandelbrotConfig<P, F> {
+        &self.config
+    }
+
+    pub fn zoom(&mut self, center: (u32, u32), radius: u32) -> (ComplexNumber<F>,
+                                                                ComplexNumber<F>) {
         let width = self.config.dimensions.0;
         let height = self.config.dimensions.1;
 
@@ -204,63 +116,154 @@ Mandelbrot<P, F>
         let x2 = center.0 + radius - 1;
         let y2 = center.1 + radius - 1;
 
-        dbg!((&center, &radius, &x1, &y1, &x2, &y2));
-
         let mut viewport = self.config.viewport;
 
-        let top_left = self.get_xy_complex(x1 as usize, y1 as usize);
-        let bottom_right = self.get_xy_complex(x2 as usize, y2 as usize);
+        let width = width as i32;
+        let height = height as i32;
+        // match (x1, y1, x2 as i32, y2 as i32) {
+        //     (x_range, y_range, x_range, y_range) => {
+        //         viewport.top_left = top_left.unwrap();
+        //         viewport.bottom_right = bottom_right.unwrap();
+        //     }
+        //     (x_range, y_range, width.., y_range) => {
+        //         let neighbor1 = self.coords.0[width as usize - 2];
+        //         let neighbor2 = self.coords.0[width as usize - 1];
+        //         let re_diff = Self::xy_diff(neighbor1, neighbor2);
+        //         let re = re_diff * (x2 as f64 - width as f64) + self.coords.0[width as usize - 1];
+        //         let im = self.coords.1[y2 as usize];
+        //         viewport.top_left = top_left.unwrap();
+        //         viewport.bottom_right = ComplexNumber::new(re, im);
+        //     }
+        //     (x_range, y_range, x_range, height..) => {
+        //         let neighbor1 = self.coords.1[height as usize - 2];
+        //         let neighbor2 = self.coords.1[height as usize - 1];
+        //         let im_diff = Self::xy_diff(neighbor1, neighbor2);
+        //         let im = im_diff * (y2 as f64 - height as f64) + self.coords.1[height as usize - 1];
+        //         let re = self.coords.0[x2 as usize];
+        //         viewport.top_left = top_left.unwrap();
+        //         viewport.bottom_right = ComplexNumber::new(re, im);
+        //     }
+        //     (x_range, y_range, width.., height..) => {}
+        //     (i32::MIN..=-1, y_range, x_range, y_range) => {}
+        //     (x_range, i32::MIN..=-1, x_range, y_range) => {}
+        //     (i32::MIN..=-1, i32::MIN..=-1, x_range, y_range) => {}
+        //     (i32::MIN..=-1, y_range, width.., y_range) => {}
+        //     (x_range, i32::MIN..=-1, x_range, height..) => {}
+        //     (i32::MIN..=-1, i32::MIN..=-1, width.., height..) => {}
+        // }
 
-        if let (Some(tl), Some(br)) = (top_left, bottom_right) {
-            viewport.top_left = tl;
-            viewport.bottom_right = br;
-            self.update(viewport);
-        } else if let Some(tl) = top_left {
-            let o1 = self.get_xy_complex(width as usize - 2, height as usize - 2).unwrap();
-            let o2 = self.get_xy_complex(width as usize - 1, height as usize - 1).unwrap();
-            let re = if x2 > width {
-                let re_diff = Self::xy_diff(o1.r, o2.r);
-                // let re_diff = Self::extend_plane(x2 as i32, o1.r, o2.r);
-                dbg!(&re_diff);
-                re_diff * (width as f64 - x2 as f64) + self.coords.0[width as usize - 1]
-            } else {
-                self.coords.0[x2 as usize]
-            };
-            let im = if y2 > height {
-                let im_diff = Self::xy_diff( o1.i, o2.i);
-                dbg!(&im_diff);
-                im_diff * (height as f64 - y2 as f64) + self.coords.1[height as usize - 1]
-            } else {
-                self.coords.1[y2 as usize]
-            };
-            viewport.top_left = tl;
-            viewport.bottom_right = ComplexNumber::new(re, im);
-            self.update(viewport);
-            return;
-        } else if let Some(br) = bottom_right {
-            if x1 < 0 || y1 < 0 {
-                let o1 = self.get_xy_complex(0, 0).unwrap();
-                let o2 = self.get_xy_complex(1, 1).unwrap();
-                let re = if x1 < 0 {
-                    let re_diff = Self::xy_diff( o1.r, o2.r);
-                    dbg!(&re_diff);
-                    re_diff * (x1.abs()) as f64 + self.coords.0[0]
-                } else {
-                    self.coords.0[x1 as usize]
-                };
-                let im = if y1 < 0 {
-                    let im_diff = Self::xy_diff( o1.i, o2.i);
-                    dbg!(&im_diff);
-                    im_diff * (y1.abs()) as f64 + self.coords.1[0]
-                } else {
-                    self.coords.1[y1 as usize]
-                };
-                viewport.top_left = ComplexNumber::new(re, im);
-                viewport.bottom_right = br;
-                self.update(viewport);
-                return;
-            }
-        }
+        let re1 = if x1 < 0 {
+            let neighbor1 = self.coords.0[1];
+            let neighbor2 = self.coords.0[0];
+            let re_diff = Self::xy_diff(neighbor1, neighbor2);
+            re_diff * (x1.abs()).into() + self.coords.0[0]
+        } else if x1 < width {
+            self.coords.0[x1 as usize]
+        } else {
+            let neighbor1 = self.coords.0[width as usize - 2];
+            let neighbor2 = self.coords.0[width as usize - 1];
+            let re_diff = Self::xy_diff(neighbor1, neighbor2);
+            re_diff * (x1 - width).into() + self.coords.0[width as usize - 1]
+        };
+
+        let im1 = if y1 < 0 {
+            let neighbor1 = self.coords.1[0];
+            let neighbor2 = self.coords.1[1];
+            let im_diff = Self::xy_diff(neighbor1, neighbor2);
+            im_diff * y1.abs().into() + self.coords.1[0]
+        } else if y1 < height {
+            self.coords.1[y1 as usize]
+        } else {
+            let neighbor1 = self.coords.1[height as usize - 2];
+            let neighbor2 = self.coords.1[height as usize - 1];
+            let im_diff = Self::xy_diff(neighbor1, neighbor2);
+            im_diff * (y1 - height).into() + self.coords.0[height as usize - 1]
+        };
+
+        let re2 = if x2 < width as u32 {
+            self.coords.0[x2 as usize]
+        } else if x2 >= width as u32 {
+            let neighbor1 = self.coords.0[width as usize - 2];
+            let neighbor2 = self.coords.0[width as usize - 1];
+            let re_diff = Self::xy_diff(neighbor1, neighbor2);
+            re_diff * (x2 as i32 - width).into() + self.coords.0[width as usize - 1]
+        } else {
+            unreachable!()
+        };
+
+        let im2 = if y2 < height as u32 {
+            self.coords.1[y2 as usize]
+        } else if y2 >= height as u32 {
+            let neighbor1 = self.coords.1[height as usize - 2];
+            let neighbor2 = self.coords.1[height as usize - 1];
+            let im_diff = Self::xy_diff(neighbor1, neighbor2);
+            im_diff * (y2 as i32 - height).into() + self.coords.1[height as usize - 1]
+        } else {
+            unreachable!()
+        };
+
+        let top_left = ComplexNumber::new(re1, im1);
+        viewport.top_left = top_left;
+        let bottom_right = ComplexNumber::new(re2, im2);
+        viewport.bottom_right = bottom_right;
+
+        self.update(viewport);
+
+        (top_left, bottom_right)
+        // if let (Some(tl), Some(br)) = (top_left, bottom_right) {
+        //     viewport.top_left = tl;
+        //     viewport.bottom_right = br;
+        //     self.update(viewport);
+        // } else if let Some(tl) = top_left {
+        //     let re = if x2 > max_x {
+        //         let neighbor1 = self.coords.0[max_x as usize - 2];
+        //         let neighbor2 = self.coords.0[max_x as usize - 1];
+        //         let re_diff = Self::xy_diff(neighbor1, neighbor2);
+        //         // let re_diff = Self::extend_plane(x2 as i32, o1.r, o2.r);
+        //         dbg!(&re_diff);
+        //         re_diff * (x2 as f64 - max_x as f64) + self.coords.0[max_x as usize - 1]
+        //     } else {
+        //         self.coords.0[x2 as usize]
+        //     };
+        //     let im = if y2 > height {
+        //         let neighbor1 = self.coords.1[height as usize - 2];
+        //         let neighbor2 = self.coords.1[height as usize - 1];
+        //         let im_diff = Self::xy_diff(neighbor1, neighbor2);
+        //         dbg!(&im_diff);
+        //         im_diff * (y2 as f64 - height as f64) + self.coords.1[height as usize - 1]
+        //     } else {
+        //         self.coords.1[y2 as usize]
+        //     };
+        //     viewport.top_left = tl;
+        //     viewport.bottom_right = ComplexNumber::new(re, im);
+        //     self.update(viewport);
+        //     return;
+        // } else if let Some(br) = bottom_right {
+        //     let re = if x1 < 0 {
+        //         let neighbor1 = self.coords.0[0];
+        //         let neighbor2 = self.coords.0[1];
+        //         let re_diff = Self::xy_diff(neighbor1, neighbor2);
+        //         dbg!(&re_diff);
+        //         re_diff * (x1.abs()) as f64 + self.coords.0[0]
+        //     } else {
+        //         self.coords.0[x1 as usize]
+        //     };
+        //     let im = if y1 < 0 {
+        //         let neighbor1 = self.coords.1[0];
+        //         let neighbor2 = self.coords.1[1];
+        //         let im_diff = Self::xy_diff(neighbor1, neighbor2);
+        //         dbg!(&im_diff);
+        //         im_diff * (y1.abs()) as f64 + self.coords.1[0]
+        //     } else {
+        //         self.coords.1[y1 as usize]
+        //     };
+        //     viewport.top_left = ComplexNumber::new(re, im);
+        //     viewport.bottom_right = br;
+        //     self.update(viewport);
+        //     return;
+        // } else {
+        //
+        // }
 
         // if x1 >= 0 && y1 >= 0 {
         //     let top_left = self.get_xy_complex(x1 as usize, y1 as usize);
@@ -360,7 +363,6 @@ Mandelbrot<P, F>
         // }
 
 
-
         // let re_range: Vec<_> = linspace(tl.r, br.r, width as usize).collect();
         // let im_range: Vec<_> = linspace(tl.i, br.i, height as usize).collect();
 
@@ -408,14 +410,14 @@ Mandelbrot<P, F>
         //     .collect();
     }
 
-    fn xy_diff(neighbor1: f64, neighbor2: f64) -> f64 {
+    fn xy_diff(neighbor1: F, neighbor2: F) -> F {
         let mut re_diff = if neighbor1 > neighbor2 {
             neighbor1 - neighbor2
         } else {
             neighbor2 - neighbor1
         };
-        if neighbor1 < 0. || neighbor2 < 0. {
-            re_diff *= -1.;
+        if neighbor1 < (0.).into() || neighbor2 < (0.).into() {
+            re_diff *= (-1.).into();
         }
         re_diff
     }
@@ -434,14 +436,14 @@ Mandelbrot<P, F>
         xy
     }
 
-    pub fn update(&mut self, viewport: Viewport<f64>) {
+    pub fn update(&mut self, viewport: Viewport<F>) {
         dbg!(&viewport);
         let (w, h) = self.config.dimensions;
 
         let top_left = viewport.top_left;
         let bottom_right = viewport.bottom_right;
-        let w_c = ComplexNumber::new(bottom_right.r, 0.0);
-        let h_c = ComplexNumber::new(0.0, bottom_right.i);
+        let w_c = ComplexNumber::new(bottom_right.r, 0.0.into());
+        let h_c = ComplexNumber::new(0.0.into(), bottom_right.i);
         let re_range = linspace(top_left.r, bottom_right.r, w as usize).collect();
         let im_range = linspace(top_left.i, bottom_right.i, h as usize).collect();
 
@@ -460,7 +462,7 @@ Mandelbrot<P, F>
     }
 
     #[cfg(feature = "gui")]
-    pub fn update_settings(&mut self, settings: &GeneratorSettings) {
+    pub fn update_settings(&mut self, settings: &GeneratorSettingsOld) {
         dbg!(&settings);
         if let Some(hue) = settings.hue {
             self.config.color_fn = ContinuousColorScale::get_color_fn_boxed(hue, 1., 1.);
@@ -482,9 +484,11 @@ Mandelbrot<P, F>
             if let Some(Ok(y2)) = settings.y2.clone().map(|v| v.parse()) {
                 viewport.bottom_right.i = y2;
             }
-            dbg!(&viewport);
             self.config.viewport = viewport;
             self.update(viewport);
+        }
+        if let Some(Ok(iterations)) = settings.iterations.clone().map(|v| v.parse()) {
+            self.iterations = iterations;
         }
     }
 
@@ -497,13 +501,13 @@ Mandelbrot<P, F>
                     if use_self {
                         self.iterate_coordinate(
                             self.values[y][x],
-                            ComplexNumber::new((*re).into(), (*im).into()),
+                            ComplexNumber::new(*re, *im),
                             iterations,
                         )
                     } else {
                         self.iterate_coordinate(
                             (0, ComplexNumber::new((0.).into(), (0.).into())),
-                            ComplexNumber::new((*re).into(), (*im).into()),
+                            ComplexNumber::new(*re, *im),
                             iterations,
                         )
                     }
@@ -557,6 +561,7 @@ Mandelbrot<P, F>
             })
             .count();
         self.iterations = 0;
+        self.max_iterations = 0;
     }
 
     fn iterate_coordinate(

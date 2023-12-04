@@ -2,11 +2,29 @@ use num_traits::{AsPrimitive, Bounded, One, Unsigned, Zero};
 use std::{fmt::UpperHex, marker::Sized};
 
 #[derive(Clone)]
-pub struct Pixel<T: Unsigned + Bounded + Send + Sync> {
+pub struct Pixel<T: Unsigned + Bounded + Send + Sync + Copy> {
     r: T,
     g: T,
     b: T,
     a: T,
+}
+
+impl<T: Unsigned + Bounded + Send + Sync + Copy> Pixel<T> {
+    pub fn r(&self) -> T {
+        self.r
+    }
+
+    pub fn g(&self) -> T {
+        self.g
+    }
+
+    pub fn b(&self) -> T {
+        self.b
+    }
+
+    pub fn a(&self) -> T {
+        self.a
+    }
 }
 
 pub trait PixelMath<T: 'static + Unsigned + Bounded + Copy + Send + Sync> {
@@ -158,21 +176,21 @@ impl<T: 'static + Unsigned + Bounded + UpperHex + Zero + One + Copy + Send + Syn
     }
 }
 
-pub struct IntoPixel<'a, T: 'a + Unsigned + Bounded + Send + Sync> {
+pub struct PixelIter<'a, T: 'a + Unsigned + Bounded + Send + Sync + Copy> {
     px: &'a Pixel<T>,
     remaining: u8,
 }
 
-impl<'a, T: Unsigned + Bounded + Send + Sync> IntoPixel<'a, T> {
+impl<'a, T: Unsigned + Bounded + Send + Sync + Copy> PixelIter<'a, T> {
     pub fn new(px: &'a Pixel<T>) -> Self {
-        IntoPixel {
-            px: &px,
+        PixelIter {
+            px,
             remaining: 5,
         }
     }
 }
 
-impl<'a, T: Unsigned + Bounded + Copy + Send + Sync> Iterator for IntoPixel<'a, T> {
+impl<'a, T: Unsigned + Bounded + Copy + Send + Sync> Iterator for PixelIter<'a, T> {
     type Item = T;
 
     fn next(&mut self) -> Option<Self::Item> {
@@ -192,13 +210,13 @@ impl<'a, T: Unsigned + Bounded + Copy + Send + Sync> Iterator for IntoPixel<'a, 
 
 #[cfg(test)]
 mod tests {
-    use super::{IntoPixel, Pixel, PixelMath};
+    use super::{PixelIter, Pixel, PixelMath};
 
     #[test]
     fn pixel_iterator() {
         let px = Pixel::new(9u8, 234, 5);
 
-        let iter = IntoPixel::new(&px);
+        let iter = PixelIter::new(&px);
 
         for i in iter {
             println!("{:?}", i);

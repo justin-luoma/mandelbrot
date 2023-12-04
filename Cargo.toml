@@ -1,6 +1,7 @@
 [workspace]
 members = ["gui", "viewer", "fractal-generator-gui", "sierpinski-triangle"]
 resolver = "2"
+authors = ["Justin Luoma <me@justin.rs>"]
 
 [profile.dev]
 opt-level = 1
@@ -21,8 +22,10 @@ num-traits = "0.2.17"
 png = { git = "https://github.com/rrbutani/image-png" }
 gif = "0.12.0"
 rayon = "1.8.0"
+
 bevy_ecs = { version = "0.11.3", optional = true }
+image = { version = "0.24.7", optional = true }
 
 [features]
 default = []
-gui = ["dep:fractal-generator-gui", "dep:bevy_ecs"]
+gui = ["dep:fractal-generator-gui", "dep:bevy_ecs", "dep:image"]

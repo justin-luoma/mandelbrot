@@ -14,21 +14,26 @@ use image::RgbaImage;
 use num_traits::Num;
 use rayon::prelude::*;
 
-use gui::{ComputeTask, ImageRes, Images, LoadingEvent, TriangleGenerator};
+use fractal_generator_gui::{GeneratorCommandMessage, GeneratorOutputMessage, GeneratorSettingsOld, RgbaData};
+use gui::{ComputeTask, LoadingEvent};
+use gui::generator::FractalGenerator;
 use gui::message::{GeneratorRxSender, GeneratorUiReceiver};
+use gui::plugin::GeneratorPlugin;
+use gui::resource::{GeneratorWindowSettings, ImageRes, Images, TriangleGenerator};
+use mandelbrot::config::MandelbrotConfig;
+use mandelbrot::config::viewport::Viewport;
 use mandelbrot::flatten_array;
-use mandelbrot::mandelbrot::{Mandelbrot, MandelbrotConfig, Viewport};
+use mandelbrot::mandelbrot::Mandelbrot;
 use mandelbrot::pixel::Pixel;
-use fractal_generator_gui::{GeneratorRxMessage, GeneratorSettings, GeneratorTxMessage, RgbaData};
 use sierpinski_triangle::SierpinskiTriangle;
 
-
-const WIDTH: f32 = 2000.;
+const WIDTH: f32 = 1024.;
+const HEIGHT: f32 = 1024.;
+const SCALE_FACTOR: f64 = 1.;
 
 const SIDEBAR_WIDTH: f32 = 200.;
 const BOTTOM_PANEL_HEIGHT: f32 = 25.;
 
-const HEIGHT: f32 = 2000.;
 
 const ITERATIONS: u32 = 1000;
 
@@ -41,6 +46,51 @@ const OFFSET_RE: f32 = -(TOTAL_WIDTH / 2.);
 const OFFSET_IM: f32 = -(TOTAL_HEIGHT / 2.);
 
 fn main() {
+    // run()
+    let viewport = Viewport::default()
+        .with_size(WIDTH as f64, HEIGHT as f64);
+    let mandelbrot =
+        Mandelbrot::<u8, f64>::new(
+            MandelbrotConfig::default()
+                .with_dimensions((WIDTH as u32, HEIGHT as u32))
+                .with_viewport(viewport),
+            ITERATIONS,
+        );
+
+    let desired_size = WIDTH * 2.;
+
+    let scale_factor = (WIDTH / desired_size) as f64;
+
+    FractalGenerator::<
+        Pixel<u8>,
+        Viewport<f64>,
+        MandelbrotConfig<u8, f64>,
+        f64
+    >::new(
+        GeneratorWindowSettings::new(
+            None,
+            WIDTH,
+            HEIGHT,
+            scale_factor,
+            SIDEBAR_WIDTH,
+            BOTTOM_PANEL_HEIGHT,
+        ),
+        mandelbrot,
+    )
+        .run()
+}
+
+fn test_system(
+    mut contexts: EguiContexts,
+) {
+    let ctx = contexts.ctx_mut();
+    egui::Window::new("test").show(ctx, |ui| {
+        ui.label("Testing");
+    });
+}
+
+fn run()
+{
     App::new()
         .insert_resource(ClearColor(Color::rgb(0.0, 0.0, 0.0)))
         .insert_resource(Msaa::Sample4)
@@ -55,7 +105,14 @@ fn main() {
                 }),
                 ..Default::default()
             }),
-            EguiPlugin
+            EguiPlugin,
+            GeneratorPlugin::<
+                Mandelbrot<u8, f64>,
+                Pixel<u8>,
+                Viewport<f64>,
+                MandelbrotConfig<u8, f64>,
+                f64
+            >::new(),
         ))
         .add_event::<LoadingEvent>()
         .init_resource::<Images>()
@@ -232,7 +289,8 @@ fn setup_mandelbrot(
         Mandelbrot::<u8, f64>::new(
             MandelbrotConfig::default()
                 .with_dimensions((WIDTH as u32, HEIGHT as u32))
-                .with_viewport(viewport)
+                .with_viewport(viewport),
+            ITERATIONS,
         );
 
     ui_state.viewport = viewport;
@@ -244,42 +302,54 @@ fn setup_mandelbrot(
         mandelbrot.run(ITERATIONS);
         let pixels = mandelbrot.get_pixels();
 
-        generator_tx.send(GeneratorTxMessage::Image(pixels)).unwrap();
+        generator_tx.send(GeneratorOutputMessage::Image(pixels)).unwrap();
         for msg in generator_rx {
             match msg {
-                GeneratorRxMessage::Zoom((x, y)) => {
-                    mandelbrot.zoom((x, y), 200);
-                    generator_tx.send(GeneratorTxMessage::Loading(true)).unwrap();
-                    mandelbrot.run(ITERATIONS);
-                    let pixels = mandelbrot.get_pixels();
-                    generator_tx.send(GeneratorTxMessage::Image(pixels)).unwrap();
-                    generator_tx.send(GeneratorTxMessage::Loading(false)).unwrap();
-                }
-                GeneratorRxMessage::Settings(settings) => {
-                    mandelbrot.update_settings(&settings);
-                    if settings.exponent.is_some() {
-                        generator_tx.send(GeneratorTxMessage::Loading(true)).unwrap();
-                        mandelbrot.recalculate(false);
-                    }
-                    if settings.x1.is_some() || settings.y1.is_some() || settings.x2.is_some() ||
-                        settings.y2.is_some() {
-                        mandelbrot.recalculate(false);
-                    }
+                GeneratorCommandMessage::Zoom((x, y)) => {
+                    let (top_left, bottom_right) = mandelbrot.zoom((x, y), 200);
+                    generator_tx.send(GeneratorOutputMessage::Loading(true)).unwrap();
+                    mandelbrot.recalculate(true);
                     mandelbrot.redraw();
                     let pixels = mandelbrot.get_pixels();
-                    generator_tx.send(GeneratorTxMessage::Image(pixels)).unwrap();
-                    generator_tx.send(GeneratorTxMessage::Loading(false)).unwrap();
+                    generator_tx.send(GeneratorOutputMessage::Image(pixels)).unwrap();
+                    generator_tx.send(GeneratorOutputMessage::Loading(false)).unwrap();
+                    generator_tx.send(GeneratorOutputMessage::Viewport(Viewport {
+                        top_left,
+                        bottom_right,
+                        width: WIDTH as f64,
+                        height: HEIGHT as f64,
+                    })).unwrap();
                 }
-                GeneratorRxMessage::Reset => {
+                GeneratorCommandMessage::Settings(settings) => {
+                    // mandelbrot.update_settings(&settings);
+                    // if settings.exponent.is_some() {
+                    //     generator_tx.send(GeneratorOutputMessage::Loading(true)).unwrap();
+                    //     mandelbrot.recalculate(false);
+                    // }
+                    // if settings.x1.is_some() || settings.y1.is_some() || settings.x2.is_some() ||
+                    //     settings.y2.is_some() {
+                    //     generator_tx.send(GeneratorOutputMessage::Loading(true)).unwrap();
+                    //     mandelbrot.recalculate(false);
+                    // }
+                    // if settings.iterations.is_some() {
+                    //     generator_tx.send(GeneratorOutputMessage::Loading(true)).unwrap();
+                    //     mandelbrot.recalculate(false);
+                    // }
+                    // mandelbrot.redraw();
+                    // let pixels = mandelbrot.get_pixels();
+                    // generator_tx.send(GeneratorOutputMessage::Image(pixels)).unwrap();
+                    // generator_tx.send(GeneratorOutputMessage::Loading(false)).unwrap();
+                }
+                GeneratorCommandMessage::Reset => {
                     mandelbrot.reset();
                     mandelbrot.update_config(MandelbrotConfig::default()
                         .with_dimensions((WIDTH as u32, HEIGHT as u32))
                         .with_viewport(viewport));
-                    generator_tx.send(GeneratorTxMessage::Loading(true)).unwrap();
+                    generator_tx.send(GeneratorOutputMessage::Loading(true)).unwrap();
                     mandelbrot.run(ITERATIONS);
                     let pixels = mandelbrot.get_pixels();
-                    generator_tx.send(GeneratorTxMessage::Image(pixels)).unwrap();
-                    generator_tx.send(GeneratorTxMessage::Loading(false)).unwrap();
+                    generator_tx.send(GeneratorOutputMessage::Image(pixels)).unwrap();
+                    generator_tx.send(GeneratorOutputMessage::Loading(false)).unwrap();
                 }
             }
         }
@@ -291,49 +361,35 @@ fn setup_mandelbrot(
 
 fn generator_image_system(
     mut commands: Commands,
-    rx: Res<GeneratorUiReceiver<Pixel<u8>>>,
+    rx: Res<GeneratorUiReceiver<Pixel<u8>, Viewport<f64>>>,
     mut ui_state: ResMut<UiState>,
     mut asset: ResMut<Assets<Image>>,
     // mut is_initialized: Local<bool>,
 ) {
     for msg in rx.0.try_iter() {
         match msg {
-            GeneratorTxMessage::Loading(is_loading) => {
+            GeneratorOutputMessage::Loading(is_loading) => {
                 ui_state.loading = is_loading;
             }
-            GeneratorTxMessage::Image(rgba_grid) => {
-                let image: Vec<_> = rgba_grid
+            GeneratorOutputMessage::Image(image) => {
+                let image: Vec<_> = image
                     .into_iter()
                     .flat_map(|row| row
                         .into_iter()
-                        .flat_map(|pixel| pixel.data().map(|v| v as u8)))
+                        .flat_map(|pixel| [
+                            pixel.r(),
+                            pixel.g(),
+                            pixel.b(),
+                            pixel.a()
+                        ]))
                     .collect();
-
-                // for (y, row) in rgba_grid.into_iter().enumerate() {
-                //     for (x, pixel) in row.into_iter().enumerate() {
-                //         let x = offset_x(x as f32);
-                //         let y = offset_y(y as f32);
-                //         let entity = commands.spawn(SpriteBundle {
-                //             sprite: Sprite {
-                //                 custom_size: Some(Vec2::splat(0.5)),
-                //                 color: Color::from(pixel.data()),
-                //                 ..default()
-                //             },
-                //             transform: Transform::from_xyz(
-                //                 x,
-                //                 y
-                //                 , 1.
-                //             ),
-                //             ..default()
-                //         })
-                //             .id();
-                //         entity_grid.0.insert((x as i32, y as i32), entity);
-                //     }
-                // }
                 let image = RgbaImage::from_raw(WIDTH as u32, HEIGHT as u32, image).unwrap();
                 let image = image::DynamicImage::from(image);
                 let handle = asset.add(Image::from_dynamic(image, false));
                 commands.insert_resource(ImageRes(handle));
+            }
+            GeneratorOutputMessage::Viewport(viewport) => {
+                ui_state.viewport = viewport;
             }
         }
     }
@@ -381,7 +437,7 @@ struct UiState {
     egui_texture_handle: Option<egui::TextureHandle>,
     is_window_open: bool,
     viewport: Viewport<f64>,
-    settings: GeneratorSettings,
+    settings: GeneratorSettingsOld,
     loading: bool,
 }
 
@@ -427,7 +483,7 @@ fn ui_example_system(
     generator_sender: Res<GeneratorRxSender>,
     mut is_initialized: Local<bool>,
     mut updated: Local<bool>,
-    mut iterations: Local<u32>,
+    mut iters: Local<u32>,
     // If you need to access the ids from multiple systems, you can also initialize the `Images`
     // resource while building the app and use `Res<Images>` instead.
     // images: Res<Images>,
@@ -436,8 +492,8 @@ fn ui_example_system(
 ) {
     // run_example(&mut ui_state, &mut rendered_texture_id, &mut is_initialized, &images, contexts);
 
-    if *iterations == 0 {
-        *iterations = 1;
+    if *iters == 0 {
+        *iters = 1;
     }
 
     if let Some(image) = image {
@@ -455,14 +511,17 @@ fn ui_example_system(
     let y1 = ui_state.viewport.top_left.i;
     let x2 = ui_state.viewport.bottom_right.r;
     let y2 = ui_state.viewport.bottom_right.i;
-    let mut x1 = ui_state.settings.x1.clone().unwrap_or(x1.to_string());
-    let mut y1 = ui_state.settings.y1.clone().unwrap_or(y1.to_string());
-    let mut x2 = ui_state.settings.x2.clone().unwrap_or(x2.to_string());
-    let mut y2 = ui_state.settings.y2.clone().unwrap_or(y2.to_string());
+
+    let mut x1 = ui_state.settings.x1.clone().unwrap_or(format!("{x1:.7}"));
+    let mut y1 = ui_state.settings.y1.clone().unwrap_or(format!("{y1:.7}"));
+    let mut x2 = ui_state.settings.x2.clone().unwrap_or(format!("{x2:.7}"));
+    let mut y2 = ui_state.settings.y2.clone().unwrap_or(format!("{y2:.7}"));
+    let mut iterations = ui_state.settings.iterations.clone().unwrap_or(ITERATIONS.to_string());
+
     let mut hue = ui_state.settings.hue.unwrap_or(200.);
     let mut exponent = ui_state.settings.exponent.unwrap_or(2);
 
-    let vertices = koch_snowflake(*iterations);
+    // let vertices = koch_snowflake(*iterations);
 
     egui::SidePanel::right("right-panel")
         .exact_width(SIDEBAR_WIDTH)
@@ -513,6 +572,15 @@ fn ui_example_system(
                     ui.add_space(25.);
                     ui.end_row();
 
+                    if create_viewport_ui(
+                        "Iterations:",
+                        &mut iterations,
+                        ui,
+                    ).changed() {
+                        let _ = ui_state.settings.iterations.insert(iterations);
+                        *updated = true;
+                    }
+
                     if add_settings_editor(
                         "Color Hue",
                         (0f64, 255f64),
@@ -543,9 +611,9 @@ fn ui_example_system(
                         egui::Button::new("Update"),
                     ).clicked() {
                         *updated = false;
-                        generator_sender
-                            .send(GeneratorRxMessage::Settings(ui_state.settings.clone()))
-                            .unwrap();
+                        // generator_sender
+                        //     .send(GeneratorCommandMessage::Settings(ui_state.settings.clone()))
+                        //     .unwrap();
                     }
 
                     ui.end_row();
@@ -553,8 +621,9 @@ fn ui_example_system(
                     if ui
                         .add_enabled(*is_initialized && !is_loading, egui::Button::new("Reset"))
                         .clicked() {
+                        ui_state.settings = GeneratorSettingsOld::default();
                         generator_sender
-                            .send(GeneratorRxMessage::Reset)
+                            .send(GeneratorCommandMessage::Reset)
                             .unwrap();
                     }
 
@@ -564,7 +633,7 @@ fn ui_example_system(
                         .add(egui::Button::new("Iterate"))
                         .clicked() {
                         // triangle.0.iterate();
-                        *iterations += 1;
+                        *iters += 1;
                     }
                 });
         });
@@ -587,24 +656,24 @@ fn ui_example_system(
                 });
             }
 
-            let lines: Vec<_> = vertices
-                .par_windows(2)
-                .map(|v| (v[0], v[1]))
-                .map(|(p1, p2)| {
-                    egui::Shape::line_segment(
-                        [
-                            Pos2::new(p1.0 as f32 * 500. + WIDTH / 2., p1.1 as f32 * 500. +
-                                HEIGHT /
-                                2.),
-                            Pos2::new(p2.0 as f32 * 500. + WIDTH / 2., p2.1 as f32 * 500. + HEIGHT /
-                                2.)
-                        ],
-                        egui::Stroke::new(
-                            5.,
-                            egui::Color32::WHITE,
-                        ),
-                    )
-                }).collect();
+            // let lines: Vec<_> = vertices
+            //     .par_windows(2)
+            //     .map(|v| (v[0], v[1]))
+            //     .map(|(p1, p2)| {
+            //         egui::Shape::line_segment(
+            //             [
+            //                 Pos2::new(p1.0 as f32 * 500. + WIDTH / 2., p1.1 as f32 * 500. +
+            //                     HEIGHT /
+            //                         2.),
+            //                 Pos2::new(p2.0 as f32 * 500. + WIDTH / 2., p2.1 as f32 * 500. + HEIGHT /
+            //                     2.)
+            //             ],
+            //             egui::Stroke::new(
+            //                 5.,
+            //                 egui::Color32::WHITE,
+            //             ),
+            //         )
+            //     }).collect();
             // ui.painter().extend(lines);
 
 
@@ -640,7 +709,7 @@ fn ui_example_system(
         if let Some(pos) = image_area.interact_pointer_pos() {
             if pos.x < WIDTH && pos.y < HEIGHT {
                 generator_sender
-                    .send(GeneratorRxMessage::Zoom((pos.x as u32, pos.y as u32)))
+                    .send(GeneratorCommandMessage::Zoom((pos.x as u32, pos.y as u32)))
                     .unwrap();
             }
         }
@@ -654,8 +723,6 @@ fn ui_example_system(
                 ui.add(egui::Spinner::new());
             }
         });
-
-    *updated = false;
 }
 
 fn create_viewport_ui(

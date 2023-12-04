@@ -18,8 +18,10 @@ use png::HasParameters;
 
 use mandelbrot::color_scale::ContinuousColorScale;
 use mandelbrot::complex_number::ComplexNumber;
+use mandelbrot::config::MandelbrotConfig;
+use mandelbrot::config::viewport::Viewport;
 use mandelbrot::flatten_array;
-use mandelbrot::mandelbrot::{Mandelbrot, MandelbrotConfig, Viewport};
+use mandelbrot::mandelbrot::Mandelbrot;
 use mandelbrot::pixel::{Pixel, PixelMath};
 
 const WIDTH: i32 = 1000;
