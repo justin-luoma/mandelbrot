@@ -57,7 +57,7 @@ fn main() {
             ITERATIONS,
         );
 
-    let desired_size = WIDTH * 2.;
+    let desired_size = WIDTH * 1.;
 
     let scale_factor = (WIDTH / desired_size) as f64;
 
